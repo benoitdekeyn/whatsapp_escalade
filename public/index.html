@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>WhatsApp Bot - Dashboard Pro</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #e9edef; margin: 0; padding: 20px; display: flex; gap: 20px; height: 90vh; box-sizing: border-box; }
+        .col-left { flex: 1; display: flex; flex-direction: column; gap: 20px; max-width: 420px; }
+        .col-right { flex: 2; display: flex; flex-direction: column; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
+        h2 { margin-top: 0; color: #111b21; font-size: 1.15rem; border-bottom: 2px solid #25D366; padding-bottom: 10px; }
+
+        /* Badge de Statut */
+        .status-badge { display: inline-flex; align-items: center; gap: 8px; font-weight: bold; font-size: 0.95rem; padding: 8px 12px; border-radius: 20px; width: fit-content; margin-bottom: 15px; }
+        .status-badge.connected { background-color: #d1fae5; color: #065f46; }
+        .status-badge.disconnected { background-color: #fee2e2; color: #991b1b; }
+        .status-badge.loading { background-color: #fef3c7; color: #92400e; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .connected .dot { background-color: #10b981; }
+        .disconnected .dot { background-color: #ef4444; }
+        .loading .dot { background-color: #f59e0b; }
+
+        /* Bloc QR Code */
+        #qr-section { display: none; flex-direction: column; align-items: center; text-align: center; }
+        #qrcode-img { max-width: 240px; border-radius: 6px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-top: 10px; }
+
+        /* Bloc Connecté */
+        #connected-section { display: none; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 15px; text-align: center; }
+        #connected-section h3 { margin: 0 0 5px 0; color: #166534; font-size: 1.1rem; }
+        #connected-section p { margin: 0; color: #15803d; font-size: 0.9rem; }
+
+        /* Logs Système */
+        #sys-logs { background: #111b21; color: #00ff00; font-family: monospace; font-size: 0.85rem; padding: 12px; border-radius: 5px; flex-grow: 1; overflow-y: auto; height: 160px; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px dashed #223; padding-bottom: 4px; }
+
+        /* Historique des messages */
+        #message-history { flex-grow: 1; overflow-y: auto; background: #efeae2; padding: 15px; border-radius: 5px; display: flex; flex-direction: column; gap: 10px; }
+        
+        .msg-wrapper { display: flex; flex-direction: column; width: 100%; }
+        .msg-wrapper.incoming { align-items: flex-start; }
+        .msg-wrapper.outgoing { align-items: flex-end; }
+
+        .msg-bubble { padding: 10px 14px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); max-width: 80%; }
+        .incoming .msg-bubble { background: white; border-left: 5px solid #ccc; }
+        .outgoing .msg-bubble { background: #d9fdd3; border-right: 5px solid #25D366; } /* Vert WhatsApp pour tes messages */
+        
+        .msg-header { display: flex; justify-content: space-between; gap: 15px; font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
+        .msg-sender { font-weight: 600; color: #111b21; font-size: 0.9rem; margin-bottom: 2px; }
+        .msg-body { margin: 0; font-size: 0.95rem; color: #1f2937; word-wrap: break-word; white-space: pre-wrap;}
+        .msg-type { font-size: 0.7rem; color: #9ca3af; margin-top: 4px; text-transform: uppercase; text-align: right;}
+    </style>
+</head>
+<body>
+
+    <div class="col-left">
+        <div class="card">
+            <h2>Statut WhatsApp</h2>
+            
+            <div id="status-badge" class="status-badge loading">
+                <span class="dot"></span>
+                <span id="status-text">Initialisation...</span>
+            </div>
+
+            <div id="connected-section">
+                <h3>Session active</h3>
+                <p id="connected-details">...</p>
+            </div>
+
+            <div id="qr-section">
+                <p id="qr-instruction" style="margin: 0; color: #4b5563; font-size: 0.9rem;">Scan requis pour l'authentification :</p>
+                <img id="qrcode-img" alt="QR Code" />
+            </div>
+        </div>
+
+        <div class="card" style="flex-grow: 1;">
+            <h2>Logs Système</h2>
+            <div id="sys-logs"></div>
+        </div>
+    </div>
+
+    <div class="col-right card">
+        <h2>Historique en direct (Entrant & Sortant)</h2>
+        <div id="message-history">
+            <div style="text-align: center; color: #64748b; margin-top: 50px; font-style: italic;" id="waiting-text">
+                En attente d'activité sur votre compte...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const sysLogsDiv = document.getElementById('sys-logs');
+        const historyDiv = document.getElementById('message-history');
+        const waitingText = document.getElementById('waiting-text');
+
+        const statusBadge = document.getElementById('status-badge');
+        const statusText = document.getElementById('status-text');
+        const qrSection = document.getElementById('qr-section');
+        const qrImg = document.getElementById('qrcode-img');
+        const connectedSection = document.getElementById('connected-section');
+        const connectedDetails = document.getElementById('connected-details');
+
+        function addSystemLog(message) {
+            const time = new Date().toLocaleTimeString();
+            sysLogsDiv.innerHTML += `<div class="log-entry">[${time}] ${message}</div>`;
+            sysLogsDiv.scrollTop = sysLogsDiv.scrollHeight;
+        }
+
+        socket.on('connect', () => {
+            addSystemLog('Connexion interface <> serveur établie.');
+        });
+
+        socket.on('auth_status', function(state) {
+            if (state.status === 'ready' || state.connected) {
+                statusBadge.className = 'status-badge connected';
+                statusText.innerText = 'Connecté';
+                qrSection.style.display = 'none';
+                qrImg.src = '';
+                connectedSection.style.display = 'block';
+                connectedDetails.innerText = state.user ? `Compte : ${state.user}` : 'Session active';
+            } else if (state.status === 'authenticated') {
+                statusBadge.className = 'status-badge loading';
+                statusText.innerText = 'Synchronisation...';
+                qrSection.style.display = 'none';
+                connectedSection.style.display = 'none';
+            } else if (state.status === 'qr' && state.qr) {
+                connectedSection.style.display = 'none';
+                statusBadge.className = 'status-badge disconnected';
+                statusText.innerText = 'Scan requis';
+                qrImg.src = state.qr;
+                qrSection.style.display = 'flex';
+            } else {
+                connectedSection.style.display = 'none';
+                statusBadge.className = 'status-badge loading';
+                statusText.innerText = 'Démarrage Chrome...';
+                qrSection.style.display = 'none';
+            }
+        });
+
+        socket.on('system_log', function(msg) { addSystemLog(msg); });
+
+        socket.on('new_message', function(data) {
+            if (waitingText) waitingText.style.display = 'none';
+
+            const wrapClass = data.isFromMe ? 'outgoing' : 'incoming';
+            const contextName = data.isGroup ? `Groupe: ${data.chatName}` : `Privé: ${data.chatName}`;
+
+            const html = `
+                <div class="msg-wrapper ${wrapClass}">
+                    <div class="msg-bubble">
+                        <div class="msg-header">
+                            <span>${contextName}</span>
+                            <span>${data.time}</span>
+                        </div>
+                        <div class="msg-sender">${data.senderName}</div>
+                        <p class="msg-body">${data.text}</p>
+                        <div class="msg-type">${data.type}</div>
+                    </div>
+                </div>
+            `;
+
+            historyDiv.innerHTML += html;
+            historyDiv.scrollTop = historyDiv.scrollHeight;
+        });
+    </script>
+</body>
+</html>

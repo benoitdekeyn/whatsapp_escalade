@@ -1,0 +1,30 @@
+{
+  "name": "whatsapp_escalade",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benoitdekeyn/whatsapp_escalade.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/benoitdekeyn/whatsapp_escalade/issues"
+  },
+  "homepage": "https://github.com/benoitdekeyn/whatsapp_escalade#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.4",
+    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#main"
+  },
+  "allowScripts": {
+    "puppeteer@18.2.1": true
+  }
+}

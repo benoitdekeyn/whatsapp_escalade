@@ -134,3 +134,23 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# ==========================================
+# WhatsApp Web.js & Sessions Chromium
+# ==========================================
+.wwebjs_auth/
+.wwebjs_cache/
+
+# ==========================================
+# Fichiers temporaires et outils locaux
+# ==========================================
+tree.txt
+*.deb
+
+# ==========================================
+# Environnement et OS
+# ==========================================
+.env
+.env.*
+.DS_Store
+Thumbs.db
